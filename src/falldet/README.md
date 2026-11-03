@@ -8,7 +8,7 @@ Pose (YOLO11-pose) → per-person tracking (ByteTrack) → fall rules → alert 
 # file, webcam (0) or RTSP stream
 python -m src.falldet --source video.mp4 --show
 python -m src.falldet --source rtsp://user:pass@cam/stream --camera-id hall --webhook https://example/fall
-python -m src.falldet --source video.mp4 --record annotated.mp4 --config site.yaml
+python -m src.falldet --source video.mp4 --record falldet_out/annotated.mp4 --config site.yaml
 ```
 
 Each fall produces one line in `falldet_out/events.jsonl` and a snapshot in `falldet_out/snapshots/`.
@@ -28,9 +28,10 @@ This uses the same setup as the CAD project: the phone streams video and the lap
 3. **Check:** `http://<phone-ip>:8080` must load in the laptop's browser. If it doesn't, nothing below will work.
 4. **Run** (from the repo root, with the shared venv):
    ```bash
-   python -m src.falldet --ip-camera 192.168.1.35 --show --record live.mp4
+   python -m src.falldet --ip-camera 192.168.1.35 --show --record falldet_out/live.mp4
    ```
-   Stop with `q` in the window, or Ctrl+C. Alerts go to `falldet_out/events.jsonl` and `falldet_out/snapshots/`, as with files.
+   Stop with `q` in the window, or Ctrl+C. Keep recordings inside `falldet_out/` (git ignores it) so videos of people never land in a commit.
+   If the phone stops sending (for example, its screen locks), the log warns `no frames ... nobody is being watched` after 5 s. Alerts go to `falldet_out/events.jsonl` and `falldet_out/snapshots/`, as with files.
 5. **Staging a fall:** put the phone at chest height or higher, pointing at an open floor area. Fall onto a **mattress** and **stay down for at least 3 s**. The box turns yellow (falling), then orange (down), then red (alert).
 
 Notes:
@@ -80,5 +81,5 @@ These use synthetic skeletons, so no video or GPU is needed.
 
 ## Known limits (phase 1)
 - Rule thresholds are untuned. Tune them on UR Fall, Le2i and client footage.
-- A person lying along the camera's line of sight can look upright. Phase 2 (a learned model on `features.normalize`) addresses this.
+- A person lying along the camera's line of sight can look upright. Phase 2 (a learned model on body-relative keypoints) addresses this.
 - Ceiling or fisheye cameras: check pose coverage first.

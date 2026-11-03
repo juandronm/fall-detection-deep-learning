@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Optional
 
 import yaml
@@ -34,14 +34,22 @@ class Config:
     camera_id: str = 'cam0'
     out_dir: str = 'falldet_out'
     webhook: Optional[str] = None
-    reconnect_secs: float = 2.0
 
 
 def load_config(path=None, **overrides):
-    """Defaults <- YAML file <- non-None overrides. Unknown keys raise TypeError."""
+    """Defaults <- YAML file <- non-None overrides.
+    Unknown keys or values of the wrong type fail here at startup, not later in the middle of a fall."""
     values = {}
     if path:
         with open(path, encoding='utf-8') as f:
             values = yaml.safe_load(f) or {}
     values.update({k: v for k, v in overrides.items() if v is not None})
+    defaults = {f.name: f.default for f in fields(Config)}
+    for key, value in values.items():
+        default = defaults.get(key)
+        if default is not None and value is not None:
+            try:
+                values[key] = type(default)(value)  # YAML '1.5' (quoted) -> 1.5
+            except (TypeError, ValueError):
+                raise ValueError(f'config {key}: expected {type(default).__name__}, got {value!r}') from None
     return Config(**values)

@@ -27,11 +27,17 @@ class AlertSink:
         img = frame.copy()
         x1, y1, x2, y2 = map(int, bbox)
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 3)
-        cv2.imwrite(str(snap), img)
+        # imencode + write_bytes: cv2.imwrite silently fails on Windows paths with non-ASCII letters (ş, ç, ı)
+        ok, buf = cv2.imencode('.jpg', img)
+        if ok:
+            snap.write_bytes(buf.tobytes())
+        else:
+            log.error('could not encode snapshot for track %s', track_id)
+            snap = None
         event = {
             'event': 'fall', 'camera_id': self.camera_id, 'track_id': int(track_id),
             'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-            'video_t': round(float(t), 2), 'score': round(float(score), 3), 'snapshot': str(snap),
+            'video_t': round(float(t), 2), 'score': round(float(score), 3), 'snapshot': str(snap) if snap else None,
         }
         with open(self.dir / 'events.jsonl', 'a', encoding='utf-8') as f:
             f.write(json.dumps(event) + '\n')

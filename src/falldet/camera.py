@@ -125,14 +125,23 @@ def file_frames(spec):
         cap.release()
 
 
-def live_frames(spec, opener=open_capture):
+def live_frames(spec, opener=open_capture, silent_warn_secs=5.0):
     """Newest frames of a live source, skipping any that arrived while we were busy: (frame, capture_time)."""
     reader, last, t0 = LatestFrameReader(spec, opener), 0, None
+    last_frame_at, warned = time.monotonic(), False
     try:
         while True:
             got = reader.latest(last)
             if got is None:
-                continue  # camera silent; the reader is reconnecting
+                # a stalled camera (phone screen locked) can keep the connection open with no read error
+                if not warned and time.monotonic() - last_frame_at > silent_warn_secs:
+                    log.warning('no frames from %s for %.0fs - nobody is being watched', mask_url(spec), silent_warn_secs)
+                    warned = True
+                continue
+            if warned:
+                log.info('frames from %s are back', mask_url(spec))
+                warned = False
+            last_frame_at = time.monotonic()
             last, frame, t = got
             t0 = t if t0 is None else t0
             yield frame, t - t0

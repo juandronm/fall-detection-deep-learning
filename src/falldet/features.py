@@ -1,4 +1,4 @@
-"""Per-frame pose features. Pure numpy, so live inference and future training share one code path."""
+"""Per-frame pose features. Pure numpy, so live inference and a future learned model can share one code path."""
 from typing import NamedTuple
 
 import numpy as np
@@ -32,20 +32,6 @@ def observe(t, xy, conf, bbox, thr=0.3):
     x1, y1, x2, y2 = bbox
     aspect = float((x2 - x1) / (y2 - y1)) if y2 > y1 else NAN
     return Obs(t, float(hip[1]) if hip is not None else NAN, angle, aspect, torso_len)
-
-
-def normalize(xy, conf, scale, thr=0.3):
-    """Body-relative keypoints: centered on the hips, in torso lengths. Missing -> nan.
-    Independent of resolution and position in the frame (input format for the phase-2 model)."""
-    out = np.full(xy.shape, np.nan, dtype=np.float32)
-    center = _mid(xy, conf, L_HIP, R_HIP, thr)
-    if center is None:
-        center = _mid(xy, conf, L_SH, R_SH, thr)
-    if center is None or not scale or not np.isfinite(scale):
-        return out
-    ok = conf >= thr
-    out[ok] = (xy[ok] - center) / scale
-    return out
 
 
 def is_low(o, low_angle, low_aspect):
