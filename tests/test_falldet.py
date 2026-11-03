@@ -1,12 +1,15 @@
 """Synthetic-skeleton tests for the fall logic (no video, no YOLO)."""
+import json
+import os
 import time
 
 import numpy as np
 import pytest
 
-from src.falldet import Config, FallLogic
+from src.falldet import Config, FallLogic, load_config
+from src.falldet.alerts import AlertSink
 from src.falldet.camera import LatestFrameReader, ip_camera_url, mask_url, parse_source
-from src.falldet.features import normalize
+from src.falldet.evaluate import score_video
 
 FPS = 30
 # distance of each COCO keypoint from the feet along the body axis (torso lengths), and sideways offset
@@ -173,9 +176,33 @@ def test_latest_frame_reader_skips_stale_frames_and_reconnects():
         LatestFrameReader.RECONNECT_MAX = 5.0
 
 
-def test_normalize_is_scale_and_shift_invariant():
-    xy, conf, _ = skeleton(20)
-    a = normalize(xy, conf, 100.0)
-    b = normalize(xy * 2.5 + [40, -70], conf, 250.0)
-    np.testing.assert_allclose(a, b, atol=1e-5)
-    assert np.isnan(normalize(xy, np.zeros(17), 100.0)).all()
+@pytest.mark.parametrize('has_fall,fall_t,alerts,expected', [
+    (False, None, [], (False, None, 0)),               # quiet clip
+    (False, None, [3.0, 9.0], (False, None, 2)),       # every alert on a no-fall clip is a false alarm
+    (True, 5.0, [4.5, 30.0], (True, -0.5, 1)),         # hit inside [-1 s, +10 s]; the late one is a false alarm
+    (True, 5.0, [3.0, 16.0], (False, None, 2)),        # both outside the window: miss + 2 false alarms
+    (True, None, [7.0, 8.0], (True, None, 1)),         # no fall time: first alert is the hit
+    (True, None, [], (False, None, 0)),                # missed fall
+])
+def test_score_video(has_fall, fall_t, alerts, expected):
+    assert score_video(has_fall, fall_t, alerts) == expected
+
+
+def test_config_converts_and_rejects_values(tmp_path):
+    cfg_file = tmp_path / 'site.yaml'
+    cfg_file.write_text("down_secs: '1.5'\ncamera_id: 7\n", encoding='utf-8')
+    cfg = load_config(cfg_file)
+    assert cfg.down_secs == 1.5 and cfg.camera_id == '7'
+    cfg_file.write_text('down_secs: soon\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='down_secs'):
+        load_config(cfg_file)
+    with pytest.raises(TypeError):
+        load_config(None, not_a_setting=1)
+
+
+def test_alert_snapshot_saved_in_non_ascii_folder(tmp_path):
+    sink = AlertSink(tmp_path / 'kasa_şube_çıkış', camera_id='cam1')
+    event = sink.emit(3, 2.0, 0.9, np.zeros((48, 64, 3), np.uint8), (5, 5, 30, 40))
+    assert event['snapshot'] and os.path.getsize(event['snapshot']) > 0
+    line = (tmp_path / 'kasa_şube_çıkış' / 'events.jsonl').read_text(encoding='utf-8')
+    assert json.loads(line)['track_id'] == 3
